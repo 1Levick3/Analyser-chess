@@ -9,7 +9,9 @@ import chess.engine
 import io
 from telegram import Bot
 import time
+import asyncio
 
+# Load config
 def load_config():
     with open('config.yaml', 'r') as f:
         return yaml.safe_load(f)
@@ -25,7 +27,12 @@ def save_state(state):
         json.dump(state, f)
 
 def fetch_new_games(username, last_game_time):
-
+    """
+    Fetch new games for the user since last_game_time (epoch seconds).
+    If last_game_time is None, only fetch games from the past day.
+    Returns a list of dicts with at least: pgn, end_time, time_class, rules, etc.
+    """
+    # If no last_game_time, default to one day ago
     if last_game_time is None:
         one_day_ago = int(time.time()) - 1 * 24 * 60 * 60
         last_game_time = one_day_ago
@@ -35,7 +42,7 @@ def fetch_new_games(username, last_game_time):
     resp.raise_for_status()
     archives = resp.json()["archives"]
     new_games = []
-    for archive_url in reversed(archives):  
+    for archive_url in reversed(archives):  # newest last
         month_resp = requests.get(archive_url, headers=headers)
         month_resp.raise_for_status()
         games = month_resp.json().get("games", [])
@@ -45,10 +52,10 @@ def fetch_new_games(username, last_game_time):
                 continue
             if end_time <= last_game_time:
                 continue
-        
+            # Only include standard chess games
             if game.get("rules") != "chess":
                 continue
-            
+            # Only include finished games with PGN
             if "pgn" not in game:
                 continue
             new_games.append({
@@ -61,10 +68,13 @@ def fetch_new_games(username, last_game_time):
                 "url": game.get("url"),
                 "result": game.get("white", {}).get("result"),
             })
-    return sorted(new_games, key=lambda g: g["end_time"])  
+    return sorted(new_games, key=lambda g: g["end_time"])  # oldest first
 
 def analyze_games(games):
-
+    """
+    Analyze each game using Stockfish. Returns a list of dicts with analysis per game.
+    Each dict includes: opening, blunders, mistakes, inaccuracies, best moves, accuracy, etc.
+    """
     stockfish_path = "stockfish/stockfish-ubuntu-x86-64-avx2"
     engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
     analyzed = []
@@ -79,15 +89,15 @@ def analyze_games(games):
         for i, move in enumerate(moves):
             info = engine.analyse(board, chess.engine.Limit(depth=15))
             score = info["score"].white().score(mate_score=10000)
-            
+            # Play move
             board.push(move)
-        
+            # Next move analysis (after move)
             info_after = engine.analyse(board, chess.engine.Limit(depth=15))
             score_after = info_after["score"].white().score(mate_score=10000)
-       
+            # Score diff (from player's perspective)
             if prev_score is not None:
                 diff = (score_after - prev_score) if (i % 2 == 0) == (game.headers["White"] == game_data["white"]) else (prev_score - score_after)
-     
+                # Classify
                 if diff <= -300:
                     blunders += 1
                 elif diff <= -100:
@@ -97,7 +107,7 @@ def analyze_games(games):
                 elif diff >= 0:
                     best_moves += 1
             prev_score = score_after
-
+        # Opening detection
         opening = game.headers.get("Opening", "Unknown")
         eco = game.headers.get("ECO", "?")
         analyzed.append({
@@ -118,7 +128,9 @@ def analyze_games(games):
     return analyzed
 
 def generate_report(analysis):
-
+    """
+    Summarize the analysis for all games and format a Markdown report for Telegram.
+    """
     if not analysis:
         return "No new games analyzed."
 
@@ -146,7 +158,7 @@ def generate_report(analysis):
         report.append(f"Opening: {g['opening']} ({g['eco']})")
         report.append(f"Result: {g['result']}")
         report.append(f"Blunders: {g['blunders']} | Mistakes: {g['mistakes']} | Inaccuracies: {g['inaccuracies']} | Best moves: {g['best_moves']}")
-
+        # Simple improvement tip
         if g['blunders'] > 0:
             report.append("Tip: Review the critical moments where you lost material or missed tactics.")
         elif g['mistakes'] > 0:
@@ -156,7 +168,7 @@ def generate_report(analysis):
         else:
             report.append("Great game! Keep it up.")
 
-
+    # General improvement tips
     report.append("\n---\n**General Improvement Tips:**")
     if total_blunders > 0:
         report.append("- Practice tactics to reduce blunders.")
@@ -168,8 +180,10 @@ def generate_report(analysis):
 
     return '\n'.join(report)
 
-def send_report(report, config):
-
+async def send_report(report, config):
+    """
+    Send the report via Telegram using the bot token and chat ID from environment variables.
+    """
     if config.get("delivery_method") != "telegram":
         print("Only Telegram delivery is implemented.")
         return
@@ -179,11 +193,10 @@ def send_report(report, config):
         print("TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set in environment.")
         return
     bot = Bot(token=token)
-
     max_len = 4000
     parts = [report[i:i+max_len] for i in range(0, len(report), max_len)]
     for part in parts:
-        bot.send_message(chat_id=chat_id, text=part, parse_mode='Markdown')
+        await bot.send_message(chat_id=chat_id, text=part, parse_mode='Markdown')
 
 def main():
     config = load_config()
@@ -195,8 +208,8 @@ def main():
         return
     analysis = analyze_games(games)
     report = generate_report(analysis)
-    send_report(report, config)
-
+    asyncio.run(send_report(report, config))
+    # Update state with latest game time
     latest_time = max(game['end_time'] for game in games)
     state['last_game_time'] = latest_time
     save_state(state)
