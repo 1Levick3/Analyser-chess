@@ -8,6 +8,7 @@ import chess.pgn
 import chess.engine
 import io
 from telegram import Bot
+import time
 
 def load_config():
     with open('config.yaml', 'r') as f:
@@ -24,17 +25,17 @@ def save_state(state):
         json.dump(state, f)
 
 def fetch_new_games(username, last_game_time):
-    """
-    Fetch new games for the user since last_game_time (epoch seconds).
-    Returns a list of dicts with at least: pgn, end_time, time_class, rules, etc.
-    """
+
+    if last_game_time is None:
+        one_day_ago = int(time.time()) - 1 * 24 * 60 * 60
+        last_game_time = one_day_ago
     archives_url = f"https://api.chess.com/pub/player/{username}/games/archives"
     headers = {"User-Agent": "chess-analyzer-bot/1.0 (contact: your@email.com)"}
     resp = requests.get(archives_url, headers=headers)
     resp.raise_for_status()
     archives = resp.json()["archives"]
     new_games = []
-    for archive_url in reversed(archives):  # newest last
+    for archive_url in reversed(archives):  
         month_resp = requests.get(archive_url, headers=headers)
         month_resp.raise_for_status()
         games = month_resp.json().get("games", [])
@@ -42,9 +43,9 @@ def fetch_new_games(username, last_game_time):
             end_time = game.get("end_time")
             if not end_time:
                 continue
-            if last_game_time and end_time <= last_game_time:
+            if end_time <= last_game_time:
                 continue
-            
+        
             if game.get("rules") != "chess":
                 continue
             
@@ -60,7 +61,7 @@ def fetch_new_games(username, last_game_time):
                 "url": game.get("url"),
                 "result": game.get("white", {}).get("result"),
             })
-    return sorted(new_games, key=lambda g: g["end_time"])  # oldest first
+    return sorted(new_games, key=lambda g: g["end_time"])  
 
 def analyze_games(games):
 
@@ -80,13 +81,13 @@ def analyze_games(games):
             score = info["score"].white().score(mate_score=10000)
             
             board.push(move)
-            
+        
             info_after = engine.analyse(board, chess.engine.Limit(depth=15))
             score_after = info_after["score"].white().score(mate_score=10000)
-           
+       
             if prev_score is not None:
                 diff = (score_after - prev_score) if (i % 2 == 0) == (game.headers["White"] == game_data["white"]) else (prev_score - score_after)
-                
+     
                 if diff <= -300:
                     blunders += 1
                 elif diff <= -100:
@@ -96,7 +97,7 @@ def analyze_games(games):
                 elif diff >= 0:
                     best_moves += 1
             prev_score = score_after
-        
+
         opening = game.headers.get("Opening", "Unknown")
         eco = game.headers.get("ECO", "?")
         analyzed.append({
@@ -145,7 +146,7 @@ def generate_report(analysis):
         report.append(f"Opening: {g['opening']} ({g['eco']})")
         report.append(f"Result: {g['result']}")
         report.append(f"Blunders: {g['blunders']} | Mistakes: {g['mistakes']} | Inaccuracies: {g['inaccuracies']} | Best moves: {g['best_moves']}")
-       
+
         if g['blunders'] > 0:
             report.append("Tip: Review the critical moments where you lost material or missed tactics.")
         elif g['mistakes'] > 0:
@@ -155,7 +156,7 @@ def generate_report(analysis):
         else:
             report.append("Great game! Keep it up.")
 
-    
+
     report.append("\n---\n**General Improvement Tips:**")
     if total_blunders > 0:
         report.append("- Practice tactics to reduce blunders.")
@@ -195,6 +196,7 @@ def main():
     analysis = analyze_games(games)
     report = generate_report(analysis)
     send_report(report, config)
+
     latest_time = max(game['end_time'] for game in games)
     state['last_game_time'] = latest_time
     save_state(state)
