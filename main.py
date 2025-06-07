@@ -129,7 +129,7 @@ def analyze_games(games):
 
 def generate_report(analysis):
     """
-    Summarize the analysis for all games and format a Markdown report for Telegram.
+    Summarize the analysis for all games and format an HTML report for Telegram.
     """
     if not analysis:
         return "No new games analyzed."
@@ -145,16 +145,17 @@ def generate_report(analysis):
         opening_counts[key] = opening_counts.get(key, 0) + 1
     most_common_opening = max(opening_counts, key=opening_counts.get)
 
-    report = ["**Chess.com Daily Report**\n"]
-    report.append(f"Games analyzed: {len(analysis)}\n")
-    report.append(f"Total moves: {total_moves}")
-    report.append(f"Blunders: {total_blunders} | Mistakes: {total_mistakes} | Inaccuracies: {total_inaccuracies} | Best moves: {total_best}\n")
-    report.append(f"Most common opening: {most_common_opening}\n")
+    report = ["<b>Chess.com Daily Report</b><br>"]
+    report.append(f"Games analyzed: {len(analysis)}<br>")
+    report.append(f"Total moves: {total_moves}<br>")
+    report.append(f"Blunders: {total_blunders} | Mistakes: {total_mistakes} | Inaccuracies: {total_inaccuracies} | Best moves: {total_best}<br>")
+    report.append(f"Most common opening: {most_common_opening}<br>")
 
     for g in analysis:
         date_str = datetime.utcfromtimestamp(g["end_time"]).strftime('%Y-%m-%d')
-        report.append(f"\n---\n**Game vs {g['black'] if g['white']=='1Levick3' else g['white']}** on {date_str}")
-        report.append(f"[View on Chess.com]({g['url']})")
+        opponent = g['black'] if g['white']=='1Levick3' else g['white']
+        report.append(f"<br>---<br><b>Game vs {opponent}</b> on {date_str}")
+        report.append(f'<a href="{g["url"]}">View on Chess.com</a>')
         report.append(f"Opening: {g['opening']} ({g['eco']})")
         report.append(f"Result: {g['result']}")
         report.append(f"Blunders: {g['blunders']} | Mistakes: {g['mistakes']} | Inaccuracies: {g['inaccuracies']} | Best moves: {g['best_moves']}")
@@ -169,7 +170,7 @@ def generate_report(analysis):
             report.append("Great game! Keep it up.")
 
     # General improvement tips
-    report.append("\n---\n**General Improvement Tips:**")
+    report.append("<br>---<br><b>General Improvement Tips:</b>")
     if total_blunders > 0:
         report.append("- Practice tactics to reduce blunders.")
     if total_mistakes > 0:
@@ -178,7 +179,7 @@ def generate_report(analysis):
         report.append("- Study opening principles and typical middlegame plans.")
     report.append("- Use puzzles and endgame trainers to sharpen your skills.")
 
-    return '\n'.join(report)
+    return '<br>'.join(report)
 
 async def send_report(report, config):
     """
@@ -196,7 +197,7 @@ async def send_report(report, config):
     max_len = 4000
     parts = [report[i:i+max_len] for i in range(0, len(report), max_len)]
     for part in parts:
-        await bot.send_message(chat_id=chat_id, text=part, parse_mode='Markdown')
+        await bot.send_message(chat_id=chat_id, text=part, parse_mode='HTML')
 
 def main():
     config = load_config()
