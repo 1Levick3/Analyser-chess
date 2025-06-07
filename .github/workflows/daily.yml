@@ -18,9 +18,9 @@ jobs:
         run: pip install -r requirements.txt
       - name: Download Stockfish
         run: |
-          wget https://stockfishchess.org/files/stockfish_15.1_linux_x64_avx2.zip
-          unzip stockfish_15.1_linux_x64_avx2.zip
-          chmod +x stockfish_15.1_linux_x64_avx2/stockfish_15.1_linux_x64_avx2
+          wget https://github.com/official-stockfish/Stockfish/releases/download/sf_16.1/stockfish-ubuntu-x86-64-avx2.zip
+          unzip stockfish-ubuntu-x86-64-avx2.zip
+          chmod +x stockfish/stockfish
       - name: Run analysis
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
