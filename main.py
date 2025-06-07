@@ -64,7 +64,7 @@ def fetch_new_games(username, last_game_time):
 
 def analyze_games(games):
 
-    stockfish_path = "stockfish_15.1_linux_x64_avx2/stockfish_15.1_linux_x64_avx2"
+    stockfish_path = "stockfish/stockfish-ubuntu-x86-64-modern"
     engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
     analyzed = []
     for game_data in games:
