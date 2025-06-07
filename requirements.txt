@@ -1,4 +1,4 @@
 python-chess
 requests
 python-telegram-bot
-yaml
+PyYAML
